@@ -120,7 +120,7 @@ SAMPLE_INVOICE = stripe.util.json.loads("""
 
 
 class StripeTestCase(unittest2.TestCase):
-    RESTORE_ATTRIBUTES = ('api_version', 'api_key')
+    RESTORE_ATTRIBUTES = ('api_version', 'api_key', 'client_id')
 
     def setUp(self):
         super(StripeTestCase, self).setUp()
@@ -186,22 +186,36 @@ class StripeUnitTestCase(StripeTestCase):
             patcher.stop()
 
 
-class StripeApiTestCase(StripeTestCase):
+class AbstractStripeApiTestCase(StripeTestCase):
 
     def setUp(self):
-        super(StripeApiTestCase, self).setUp()
+        super(AbstractStripeApiTestCase, self).setUp()
 
-        self.requestor_patcher = patch('stripe.api_requestor.APIRequestor')
+        # REQUESTOR_CLS_NAME should be defined as a class constant in derived
+        # classes.
+        self.requestor_patcher = patch(self.REQUESTOR_CLS_NAME)
         requestor_class_mock = self.requestor_patcher.start()
         self.requestor_mock = requestor_class_mock.return_value
 
     def tearDown(self):
-        super(StripeApiTestCase, self).tearDown()
+        super(AbstractStripeApiTestCase, self).tearDown()
 
         self.requestor_patcher.stop()
 
     def mock_response(self, res):
         self.requestor_mock.request = Mock(return_value=(res, 'reskey'))
+
+
+class StripeApiTestCase(AbstractStripeApiTestCase):
+    REQUESTOR_CLS_NAME = 'stripe.api_requestor.APIRequestor'
+
+
+class StripeOAuthTestCase(AbstractStripeApiTestCase):
+    REQUESTOR_CLS_NAME = 'stripe.api_requestor.OAuthRequestor'
+
+    def setUp(self):
+        super(StripeOAuthTestCase, self).setUp()
+        self.mock_response({})
 
 
 class StripeResourceTest(StripeApiTestCase):

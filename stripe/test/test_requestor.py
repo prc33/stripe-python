@@ -88,7 +88,34 @@ class UrlMatcher(object):
         return q_matcher == other
 
 
-class APIRequestorRequestTests(StripeUnitTestCase):
+class AbstractRequestorRequestTests(StripeUnitTestCase):
+    def setUp(self):
+        super(AbstractRequestorRequestTests, self).setUp()
+
+        self.http_client = Mock(stripe.http_client.HTTPClient)
+        self.http_client._verify_ssl_certs = True
+        self.http_client.name = 'mockclient'
+
+        # REQUESTOR_CLS should be defined as a class constant in derived
+        # classes.
+        self.requestor = self.REQUESTOR_CLS(client=self.http_client)
+
+    def mock_response(self, return_body, return_code, requestor=None,
+                      headers=None):
+        if not requestor:
+            requestor = self.requestor
+
+        self.http_client.request = Mock(
+            return_value=(return_body, return_code, headers or {}))
+
+    @property
+    def valid_path(self):
+        return '/foo'
+
+
+class APIRequestorRequestTests(AbstractRequestorRequestTests):
+    REQUESTOR_CLS = stripe.api_requestor.APIRequestor
+
     ENCODE_INPUTS = {
         'dict': {
             'astring': 'bar',
@@ -129,24 +156,6 @@ class APIRequestorRequestTests(StripeUnitTestCase):
         'none': [],
     }
 
-    def setUp(self):
-        super(APIRequestorRequestTests, self).setUp()
-
-        self.http_client = Mock(stripe.http_client.HTTPClient)
-        self.http_client._verify_ssl_certs = True
-        self.http_client.name = 'mockclient'
-
-        self.requestor = stripe.api_requestor.APIRequestor(
-            client=self.http_client)
-
-    def mock_response(self, return_body, return_code, requestor=None,
-                      headers=None):
-        if not requestor:
-            requestor = self.requestor
-
-        self.http_client.request = Mock(
-            return_value=(return_body, return_code, headers or {}))
-
     def check_call(self, meth, abs_url=None, headers=None,
                    post_data=None, requestor=None):
         if not abs_url:
@@ -158,10 +167,6 @@ class APIRequestorRequestTests(StripeUnitTestCase):
 
         self.http_client.request.assert_called_with(
             meth, abs_url, headers, post_data)
-
-    @property
-    def valid_path(self):
-        return '/foo'
 
     def encoder_check(self, key):
         stk_key = "my%s" % (key,)
@@ -395,6 +400,17 @@ class APIRequestorRequestTests(StripeUnitTestCase):
         self.assertRaises(stripe.error.APIConnectionError,
                           self.requestor.request,
                           'foo', 'bar')
+
+
+class OAuthRequestorRequestTests(AbstractRequestorRequestTests):
+    REQUESTOR_CLS = stripe.api_requestor.OAuthRequestor
+
+    def test_oauth_error(self):
+        self.mock_response('{"error": ""}', 400)
+
+        self.assertRaises(stripe.error.OAuthError,
+                          self.requestor.request,
+                          'get', self.valid_path, {})
 
 
 class DefaultClientTests(unittest2.TestCase):
